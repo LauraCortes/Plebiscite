@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+.tract {
+  stroke: #a5a5a5;
+  stroke-width: 0.1px;
+}
+.tract:hover {
+  stroke: black;
+	stroke-width: 2px;
+}
+
+
+.legend {
+    font-family: sans-serif;
+    font-size: 10pt;
+}
+.legendTitle {
+  font-weight: bold;
+  font-family: sans-serif;
+  font-size:11pt;
+}
+#dropDown{
+  font-family: sans-serif;
+  font-size: 10pt;
+  position: absolute;
+  left: 690px;
+  top: 80px;
+  }
+#titleDropDown{
+  font-weight: bold;
+  font-family: sans-serif;
+  font-size:11pt;
+  position: absolute;
+  left: 690px;
+  top: 55px;
+}
+  #titulo{
+    font-weight: bold;
+  font-family: sans-serif;
+  font-size:22pt;
+  position: absolute;
+  left: 20px;
+  top: 15px;
+  }
+  
+ #container2{
+  font-family: sans-serif;
+  font-size: 10pt;
+  position: absolute;
+  left: 1100px;
+  top: 200px;
+  }
+</style>
+<body>
+<script src="http://d3js.org/d3.v4.min.js"></script>
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+<script src="http://d3js.org/queue.v1.min.js"></script>
+<script src="http://d3js.org/topojson.v1.min.js"></script>
+<script src="https://d3js.org/d3-geo-projection.v1.min.js"></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.10.3/babel.min.js'></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.11.0/d3-legend.min.js"></script>
+  
+<div id="titulo"> Así votó el país que sufre</div>
+  
+<div id="titleDropDown">Seleccione un filtro </div>
+  <select name="actos" id="dropDown"></select>
+<div id="container2"></div> 
+<script>
+const margin = {top: 0, right: 0, bottom: 0, left: 0};
+const width = 2000 - margin.left - margin.right;
+const height = 2000 - margin.top - margin.bottom;
+ 
+const svg = d3.select('body')
+  .append('svg')
+  .attr('width', width)
+  .attr('height', height)
+  .append('g')
+  .attr('class', 'map');
+
+const projection = d3.geoRobinson()
+  .scale(1900)
+  .rotate([352, 0, 0])
+.center([-74, 4.5])
+  .translate( [450, 400]);
+
+const path = d3.geoPath().projection(projection); 
+queue()
+  .defer(d3.json, 'municipios.json')
+	.defer(d3.csv, 'MunicipiosPlebiscito2016.csv')
+  .await(ready);
+  
+function ready(error, geography, data) {
+  if (error) throw error;
+   
+  function clicked(municipio){
+    console.log(municipio)
+    d3.select("#container2").html("<b>Municipio: </b>"+
+                            municipio["Municipio"] )  
+  d3.select("#container2").append("p").html("<b> Departamento: </b>"+ municipio["Departamento"] )
+	d3.select("#container2").append("p").html("<b> No: </b>"+ municipio["No"]*100 +"%")
+  d3.select("#container2").append("p").html("<b> Si: </b>"+ municipio["Si"]*100 +"%")
+  }
+  var municipios = {};
+  data.forEach(function (d) {
+    //Parse the percentages
+    d.result = d["No"];
+    
+    var res = {};
+    municipios[d.Municipio+" "+d.Departamento]=d;
+  });
+ 
+  var color = d3.scaleSequential(d3.interpolateRdBu)
+    .domain([0, 1]);
+  
+   svg.append('g')
+    .attr('class', 'countries')
+    .selectAll('path')
+    .data(geography.features)
+    .enter().append('path')
+   		.on('click', function (d) {clicked(municipios[d.properties.NOMBRE_MPI+" "+d.properties.NOMBRE_DPT])})
+   		.attr("class", "tract")
+   		.attr("id",function (d){d.properties.NOMBRE_MPI+" "+d.properties.NOMBRE_DPT})
+      .style("fill", function (d) {
+        var city = municipios[d.properties.NOMBRE_MPI+" "+d.properties.NOMBRE_DPT];
+        if (city){
+          return color(city.result);
+        }
+        else {
+          //console.log(d.properties.NOMBRE_MPI);
+          return color(0);
+        }
+      })
+      .attr('d', path);
+  
+  //Guia colores
+  svg.append("g")
+    .attr("class", "legend")
+    .attr("transform", "translate(400,60)");
+
+  var legendLinear = d3.legendColor()
+    .cells(10)
+    .orient('horizontal')
+  	.title("Leyenda voto plebiscito")
+    .labelAlign("start")
+    .scale(color)
+  	.shape("circle")
+  .labels(["Si",,,,,,,,,"No"]);
+
+  svg.select(".legend")
+    .call(legendLinear);
+  
+  //Scatter plot 
+ data.sort(function(a, b) { return b[data.columns[2]] / b.total - a[data.columns[2]] / a.total; });
+ 
+var x = d3.scaleBand().range([0, 600]);
+var y = d3.scaleLinear().range([500, 0]);
+  
+var stack = d3.stack()
+    .offset(d3.stackOffsetExpand);
+  
+  x.domain(data.map(function(d) { return d["Departamento"]; }));
+  y.domain([0, d3.max(data, function(d) { return +d["Actos terroristas"]; })]);
+  
+  svg.selectAll(".serie")
+      .data(data)
+    .enter().append("circle")
+  		.attr("class", "tract serie")
+  		.attr("id",function (d){d["Municipio"]+" "+d["Departamento"]})
+  		.on('click', function (d) {clicked(municipios[d["Municipio"]+" "+d["Departamento"]])})
+      .attr("r", 6)
+      .attr("cx", function(d) {  return x(d["Departamento"]); })
+      .attr("cy", function(d) { return y(d["Actos terroristas"]); })
+  		.attr("transform", "translate(500,150)") 		
+  		.style("fill", function (d) {
+        var city = municipios[d["Municipio"]+" "+d["Departamento"]];
+        if (city){
+          return color(city.result);
+        }
+        else {
+          //console.log(d.properties.NOMBRE_MPI);
+          return color(0);
+        }
+      });
+  
+  svg.append("g")
+  	.attr("class", "axis axis--x")
+      .attr("transform", "translate(500,650)")
+      .call(d3.axisBottom(x))
+  .selectAll("text")
+    .attr("dy", ".35em")
+    .attr("transform", "rotate(65)")
+    .style("text-anchor", "start");
+
+  svg.append("g")
+  .attr("transform", "translate(490,150)")
+  .call(d3.axisLeft(y));
+ 
+  //Actualizar
+  function actualizar(parametro)
+	{
+    x.domain(data.map(function(d) { return d["Departamento"]; }));
+    y.domain([0, d3.max(data, function(d) { return +d[parametro]; })]);
+    
+    var select= svg.selectAll(".serie")
+      .data(data); 
+    select.exit().remove();
+    var enter= select.enter().append("circle");
+    select.merge(enter)
+    		.attr("class", "tract serie")
+    		.attr("id",function (d){d["Municipio"]+" "+d["Departamento"]})
+  		.on('click', function (d) {clicked(municipios[d["Municipio"]+" "+d["Departamento"]])})
+      .attr("r", 6) 
+      .attr("cx", function(d) {  return x(d["Departamento"]); })
+      .attr("cy", function(d) {
+      console.log(d[parametro]); 
+      return y(d[parametro]); })
+  		.attr("transform", "translate(500,150)")
+  		.style("fill", function (d) {
+        var city = municipios[d["Municipio"]+" "+d["Departamento"]];
+        if (city){
+          return color(city.result);
+        }
+        else {
+          //console.log(d.properties.NOMBRE_MPI);
+          return color(0);
+        }
+      });
+    select.enter().append("g")
+  .attr("transform", "translate(490,150)")
+  .call(d3.axisLeft(y));
+  }
+  //Selector
+   var names=["Actos terroristas","Amenaza", "Desplazamiento", "Homicidio","Secuestro", "Vinculacion de Niños y Adolescentes","Minas Antipersonal", "Abandono o Despojo de Tierras"];
+ 
+  var selector =d3.select("#dropDown")
+    .on("change", function () { 
+      actualizar(d3.select(this).property("value")); 
+    })
+    .selectAll("option")
+    .data(names)
+    .enter()
+    .append("option")
+    .text(function (d) { return d; })
+    .attr("value", function (d) { return d; });
+}
+</script>
+</body>
